@@ -100,6 +100,8 @@ impl QuorumCreditContract {
         threshold: i128,
     ) -> Result<(), ContractError> {
         borrower.require_auth();
+        
+        assert!(amount > 0, "loan amount must be greater than zero");
 
         let vouches: Vec<VouchRecord> = env
             .storage()
@@ -366,5 +368,18 @@ mod tests {
         let vouches = client.get_vouches(&borrower);
         assert_eq!(vouches.len(), 1);
         assert_eq!(vouches.get(0).unwrap().stake, 1_000_000);
+    }
+
+    #[test]
+    #[should_panic(expected = "loan amount must be greater than zero")]
+    fn test_zero_amount_loan_should_fail() {
+        let env = Env::default();
+        let (contract_id, _token_addr, _admin, borrower, voucher) = setup(&env);
+        let client = QuorumCreditContractClient::new(&env, &contract_id);
+
+        client.vouch(&voucher, &borrower, &1_000_000);
+        
+        // This should panic due to zero amount
+        client.request_loan(&borrower, &0, &1_000_000);
     }
 }
