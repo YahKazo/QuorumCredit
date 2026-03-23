@@ -328,6 +328,50 @@ impl QuorumCreditContract {
         Self::token(&env).transfer(&env.current_contract_address(), &recipient, &amount);
     }
 
+    /// Withdraw a vouch before any loan is active, returning the exact stake to the voucher.
+    pub fn withdraw_vouch(env: Env, voucher: Address, borrower: Address) {
+        voucher.require_auth();
+
+        // Block withdrawal if a loan record already exists for this borrower.
+        assert!(
+            env.storage()
+                .persistent()
+                .get::<DataKey, LoanRecord>(&DataKey::Loan(borrower.clone()))
+                .is_none(),
+            "loan already active"
+        );
+
+        // Load the vouches list; panic if absent.
+        let mut vouches: Vec<VouchRecord> = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Vouches(borrower.clone()))
+            .expect("vouch not found");
+
+        // Find the index of the matching VouchRecord.
+        let idx = vouches
+            .iter()
+            .position(|v| v.voucher == voucher)
+            .expect("vouch not found") as u32;
+
+        let stake = vouches.get(idx).unwrap().stake;
+        vouches.remove(idx);
+
+        // Persist updated list or remove the key if empty.
+        if vouches.is_empty() {
+            env.storage()
+                .persistent()
+                .remove(&DataKey::Vouches(borrower));
+        } else {
+            env.storage()
+                .persistent()
+                .set(&DataKey::Vouches(borrower), &vouches);
+        }
+
+        // Return exact stake to voucher.
+        Self::token(&env).transfer(&env.current_contract_address(), &voucher, &stake);
+    }
+
     // ── Views ─────────────────────────────────────────────────────────────────
 
     pub fn get_slash_treasury(env: Env) -> i128 {
